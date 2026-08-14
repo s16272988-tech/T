@@ -1,3 +1,380 @@
+-- ==================================================================
+-- СКРИПТ: ПОЛЕТ РАКЕТЫ С КОНТРОЛЕМ СКОРОСТИ, КАМЕРОЙ, ПРИЦЕЛОМ И КОЛЛИЗИЕЙ
+-- ==================================================================
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local localPlayer = Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+local camera = workspace.CurrentCamera
+
+local bombEvents = ReplicatedStorage:FindFirstChild("BombEvents")
+local bombExplodeEvent = bombEvents and bombEvents:FindFirstChild("BombExplode")
+
+if playerGui:FindFirstChild("RocketHubGUI") then
+    playerGui.RocketHubGUI:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "RocketHubGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- Прицел по центру экрана (скрыт до запуска)
+local crosshair = Instance.new("TextLabel")
+crosshair.Name = "RocketCrosshair"
+crosshair.Size = UDim2.new(0, 40, 0, 40)
+crosshair.Position = UDim2.new(0.5, 0, 0.5, 0)
+crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
+crosshair.BackgroundTransparency = 1
+crosshair.Text = "+"
+crosshair.TextColor3 = Color3.fromRGB(0, 255, 0)
+crosshair.TextSize = 28
+crosshair.Font = Enum.Font.GothamBold
+crosshair.Visible = false
+crosshair.Parent = screenGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 280, 0, 500)
+mainFrame.Position = UDim2.new(0.5, -140, 0.5, -250)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 12)
+corner.Parent = mainFrame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 45)
+title.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+title.Text = "ВЫБОР ЦЕЛИ ДЛЯ РАКЕТЫ"
+title.TextColor3 = Color3.fromRGB(255, 140, 0)
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.Parent = mainFrame
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 12)
+titleCorner.Parent = title
+
+local scrollingFrame = Instance.new("ScrollingFrame")
+scrollingFrame.Size = UDim2.new(1, -20, 1, -200)
+scrollingFrame.Position = UDim2.new(0, 10, 0, 55)
+scrollingFrame.BackgroundTransparency = 1
+scrollingFrame.BorderSizePixel = 0
+scrollingFrame.Parent = mainFrame
+
+local uiList = Instance.new("UIListLayout")
+uiList.Padding = UDim.new(0, 8)
+uiList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+uiList.Parent = scrollingFrame
+
+-- Настройка скорости (Мин: 50 | Макс: 150)
+local speedFrame = Instance.new("Frame")
+speedFrame.Size = UDim2.new(1, -20, 0, 60)
+speedFrame.Position = UDim2.new(0, 10, 1, -135)
+speedFrame.BackgroundTransparency = 1
+speedFrame.Parent = mainFrame
+
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(1, 0, 0, 25)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Text = "Скорость: 120 (Мин: 50 | Макс: 150)"
+speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedLabel.TextSize = 13
+speedLabel.Font = Enum.Font.GothamBold
+speedLabel.Parent = speedFrame
+
+local currentSpeed = 120
+
+local speedMinusBtn = Instance.new("TextButton")
+speedMinusBtn.Size = UDim2.new(0, 50, 0, 30)
+speedMinusBtn.Position = UDim2.new(0, 0, 0, 25)
+speedMinusBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+speedMinusBtn.Text = "- 10"
+speedMinusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedMinusBtn.Font = Enum.Font.GothamBold
+speedMinusBtn.Parent = speedFrame
+Instance.new("UICorner", speedMinusBtn).CornerRadius = UDim.new(0, 6)
+
+local speedPlusBtn = Instance.new("TextButton")
+speedPlusBtn.Size = UDim2.new(0, 50, 0, 30)
+speedPlusBtn.Position = UDim2.new(1, -50, 0, 25)
+speedPlusBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+speedPlusBtn.Text = "+ 10"
+speedPlusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedPlusBtn.Font = Enum.Font.GothamBold
+speedPlusBtn.Parent = speedFrame
+Instance.new("UICorner", speedPlusBtn).CornerRadius = UDim.new(0, 6)
+
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(1, -110, 0, 30)
+speedBox.Position = UDim2.new(0, 55, 0, 25)
+speedBox.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+speedBox.Text = tostring(currentSpeed)
+speedBox.TextColor3 = Color3.fromRGB(255, 140, 0)
+speedBox.TextSize = 16
+speedBox.Font = Enum.Font.GothamBold
+speedBox.Parent = speedFrame
+Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 6)
+
+speedMinusBtn.MouseButton1Click:Connect(function()
+    currentSpeed = math.clamp(currentSpeed - 10, 50, 150)
+    speedBox.Text = tostring(currentSpeed)
+    speedLabel.Text = "Скорость: " .. currentSpeed .. " (Мин: 50 | Макс: 150)"
+end)
+
+speedPlusBtn.MouseButton1Click:Connect(function()
+    currentSpeed = math.clamp(currentSpeed + 10, 50, 150)
+    speedBox.Text = tostring(currentSpeed)
+    speedLabel.Text = "Скорость: " .. currentSpeed .. " (Мин: 50 | Макс: 150)"
+end)
+
+speedBox.FocusLost:Connect(function()
+    local val = tonumber(speedBox.Text)
+    if val then
+        currentSpeed = math.clamp(math.floor(val), 50, 150)
+    end
+    speedBox.Text = tostring(currentSpeed)
+    speedLabel.Text = "Скорость: " .. currentSpeed .. " (Мин: 50 | Макс: 150)"
+end)
+
+local launchBtn = Instance.new("TextButton")
+launchBtn.Size = UDim2.new(1, -20, 0, 50)
+launchBtn.Position = UDim2.new(0, 10, 1, -65)
+launchBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
+launchBtn.Text = "🚀 ПУСТИТЬ РАКЕТУ"
+launchBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+launchBtn.TextScaled = true
+launchBtn.Font = Enum.Font.GothamBold
+launchBtn.Parent = mainFrame
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 8)
+btnCorner.Parent = launchBtn
+
+local selectedTarget = nil
+local selectedCardFrame = nil
+
+local function updateHubList()
+    for _, child in ipairs(scrollingFrame:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+
+    local count = 0
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            count = count + 1
+
+            local playerCard = Instance.new("TextButton")
+            playerCard.Size = UDim2.new(1, 0, 0, 65)
+            playerCard.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+            playerCard.AutoButtonColor = false
+            playerCard.Text = ""
+            playerCard.Parent = scrollingFrame
+
+            local cardCorner = Instance.new("UICorner")
+            cardCorner.CornerRadius = UDim.new(0, 10)
+            cardCorner.Parent = playerCard
+
+            local avatarImage = Instance.new("ImageLabel")
+            avatarImage.Size = UDim2.new(0, 48, 0, 48)
+            avatarImage.Position = UDim2.new(0, 12, 0.5, -24)
+            avatarImage.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+            avatarImage.BorderSizePixel = 0
+            avatarImage.Parent = playerCard
+
+            local avatarCorner = Instance.new("UICorner")
+            avatarCorner.CornerRadius = UDim.new(1, 0)
+            avatarCorner.Parent = avatarImage
+
+            task.spawn(function()
+                local suc, imgUrl = pcall(function()
+                    return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+                end)
+                if suc and avatarImage.Parent then
+                    avatarImage.Image = imgUrl
+                end
+            end)
+
+            local displayNameLabel = Instance.new("TextLabel")
+            displayNameLabel.Size = UDim2.new(0, 180, 0, 24)
+            displayNameLabel.Position = UDim2.new(0, 72, 0, 10)
+            displayNameLabel.BackgroundTransparency = 1
+            displayNameLabel.Text = player.DisplayName
+            displayNameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            displayNameLabel.TextSize = 15
+            displayNameLabel.Font = Enum.Font.GothamBold
+            displayNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            displayNameLabel.Parent = playerCard
+
+            local usernameLabel = Instance.new("TextLabel")
+            usernameLabel.Size = UDim2.new(0, 180, 0, 20)
+            usernameLabel.Position = UDim2.new(0, 72, 0, 32)
+            usernameLabel.BackgroundTransparency = 1
+            usernameLabel.Text = "@" .. player.Name
+            usernameLabel.TextColor3 = Color3.fromRGB(160, 160, 175)
+            usernameLabel.TextSize = 13
+            usernameLabel.Font = Enum.Font.Gotham
+            usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            usernameLabel.Parent = playerCard
+
+            playerCard.MouseButton1Click:Connect(function()
+                selectedTarget = player
+                if selectedCardFrame and selectedCardFrame.Parent then
+                    selectedCardFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+                end
+                selectedCardFrame = playerCard
+                playerCard.BackgroundColor3 = Color3.fromRGB(0, 100, 50)
+            end)
+        end
+    end
+    scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, count * 75)
+end
+
+launchBtn.MouseButton1Click:Connect(function()
+    if not selectedTarget or not selectedTarget.Character then
+        warn("⚠️ Сначала выбери цель из списка!")
+        return
+    end
+
+    local realRocket = nil
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "BombMissile" and (obj:IsA("Model") or obj:IsA("BasePart")) then
+            realRocket = obj
+            break
+        end
+    end
+
+    if not realPlayer or not realRocket then -- Безопасная проверка
+        -- на случай отсутствия
+    end
+
+    if not realRocket then
+        warn("⚠️ Ракета 'BombMissile' не найдена в Workspace! Заспавни её.")
+        return
+    end
+
+    print("🚀 Полет ракеты на цель: " .. selectedTarget.Name)
+
+    for _, desc in ipairs(realRocket:GetDescendants()) do
+        if desc:IsA("Script") or desc:IsA("LocalScript") or desc:IsA("BodyMover") or desc:IsA("BodyVelocity") or desc:IsA("LinearVelocity") or desc:IsA("VectorForce") then
+            desc:Destroy()
+        end
+    end
+
+    camera.CameraType = Enum.CameraType.Scriptable
+    crosshair.Visible = true
+
+    local isFlying = true
+    local currentPart = realRocket:IsA("Model") and (realRocket.PrimaryPart or realRocket:FindFirstChildWhichIsA("BasePart")) or realRocket
+
+    -- Функция деспавна цели (убийство / удаление персонажа)
+    local function deselectAndDestroyTarget()
+        if selectedTarget and selectedTarget.Character then
+            -- Уничтожаем персонажа (цель будет полностью ликвидирована)
+            pcall(function()
+                selectedTarget.Character:BreakJoints()
+            end)
+            -- Альтернативно, если нужно полностью удалить модель:
+            -- selectedTarget.Character:Destroy()
+        end
+    end
+
+    -- Обработка столкновения со стенами, землей или целью
+    local touchConnection
+    if currentPart then
+        touchConnection = currentPart.Touched:Connect(function(hit)
+            if not isFlying then return end
+            
+            -- Проверяем, задели ли мы выбранную цель
+            if selectedTarget and selectedTarget.Character and hit:IsDescendantOf(selectedTarget.Character) then
+                isFlying = false
+                deselectAndDestroyTarget() -- Диспавним / уничтожаем цель
+                if bombExplodeEvent then
+                    pcall(function()
+                        bombExplodeEvent:FireServer(currentPart.Position, realRocket)
+                    end)
+                end
+                return
+            end
+
+            -- Проверяем столкновение со стеной или землей (не с собой и не с ракетой)
+            if hit and not hit:IsDescendantOf(localPlayer.Character) and not hit:IsDescendantOf(realRocket) then
+                isFlying = false
+                if bombExplodeEvent then
+                    pcall(function()
+                        bombExplodeEvent:FireServer(currentPart.Position, realRocket)
+                    end)
+                end
+            end
+        end)
+    end
+
+    task.spawn(function()
+        while isFlying and realRocket and realRocket.Parent and selectedTarget.Character and selectedTarget.Character:FindFirstChild("HumanoidRootPart") do
+            local targetPart = selectedTarget.Character.HumanoidRootPart
+            
+            if realRocket:IsA("Model") then
+                for _, part in ipairs(realRocket:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.Anchored = false
+                        part.CanCollide = true -- Включаем коллизии для взаимодействия с миром и целью
+                    end
+                end
+            elseif realRocket:IsA("BasePart") then
+                realRocket.Anchored = false
+                realRocket.CanCollide = true
+            end
+
+            if not currentPart or not currentPart.Parent then break end
+
+            local currentPos = currentPart.Position
+            local targetPos = targetPart.Position
+
+            -- Ракета летит строго кончиком на цель
+            local lookAtCF = CFrame.lookAt(currentPos, targetPos)
+            local nextCF = lookAtCF + (lookAtCF.LookVector * (currentSpeed * 0.03))
+
+            if realRocket:IsA("Model") then
+                realRocket:PivotTo(nextCF)
+            else
+                realRocket.CFrame = nextCF
+            end
+
+            -- Камера следует за ракетой
+            camera.CFrame = nextCF * CFrame.new(0, 3, -6) * CFrame.Angles(0, math.rad(180), 0)
+
+            -- Проверка попадания в цель по дистанции (на случай пролёта сквозь хитбокс)
+            if (currentPos - targetPos).Magnitude < 7 then
+                isFlying = false
+                deselectAndDestroyTarget() -- Диспавним / уничтожаем цель
+                if bombExplodeEvent then
+                    pcall(function()
+                        bombExplodeEvent:FireServer(currentPos, realRocket)
+                    end)
+                end
+            end
+            task.wait(0.03)
+        end
+
+        if touchConnection then
+            touchConnection:Disconnect()
+        end
+
+        crosshair.Visible = false
+        camera.CameraType = Enum.CameraType.Custom
+        if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            camera.CameraSubject = localPlayer.Character.Humanoid
+        end
+    end)
+end)
+
+Players.PlayerAdded:Connect(updateHubList)
+Players.PlayerRemoving:Connect(updateHubList)
+updateHubList()
 # Compiled Lua sources
 luac.out
 
